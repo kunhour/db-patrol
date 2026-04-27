@@ -1,0 +1,31 @@
+# 数据库巡检配置文件
+# 注意: 数据库连接配置不存储在此文件中，应通过命令行参数传递
+
+# 巡检配置
+inspection:
+  # 慢查询阈值（秒）
+  slow_query_threshold: 1.0
+  
+  # 最大连接数警告阈值（百分比）
+  max_connections_threshold: 80
+  
+  # 表大小警告阈值（MB）
+  table_size_threshold: 1024
+  
+  # 检查项开关
+  checks:
+    basic_info: true
+    performance: true
+    schema: false
+    table_structure: true
+    index_check: true
+    security: true
+
+# 报告配置
+report:
+  # 输出格式: html, markdown, json
+  format: html
+  # 输出目录
+  output_dir: ./reports
+  # 是否包含建议
+  include_suggestions: true
