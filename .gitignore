@@ -1,11 +1,5 @@
-# Binaries
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-db-patrol
-db-patrol-*
+# Build output
+dist/
 
 # Test binary
 *.test

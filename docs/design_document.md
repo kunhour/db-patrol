@@ -959,16 +959,16 @@ Go 天然支持交叉编译，无需额外工具链：
 
 ```bash
 # Linux ARM64 (银河麒麟)
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o db-patrol-linux-arm64 .
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o dist/db-patrol-linux-arm64 .
 
 # Linux x86_64
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o db-patrol-linux-amd64 .
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/db-patrol-linux-amd64 .
 
 # macOS ARM64 (M1/M2)
-GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o db-patrol-darwin-arm64 .
+GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o dist/db-patrol-darwin-arm64 .
 
 # Windows
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o db-patrol.exe .
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o dist/db-patrol.exe .
 ```
 
 ---

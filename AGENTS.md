@@ -13,6 +13,7 @@ db-patrol/
 ├── main.go                      # 程序入口
 ├── go.mod                       # Go 模块定义
 ├── config.yaml                  # 巡检配置
+├── dist/                        # 编译输出目录
 ├── cmd/
 │   └── root.go                  # CLI 入口 (cobra)
 └── internal/
@@ -105,10 +106,10 @@ db-patrol/
 
 ```bash
 # Windows 编译
-go build -o db-patrol.exe .
+go build -o dist/db-patrol.exe .
 
 # Linux ARM64 交叉编译
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o db-patrol-linux-arm64 .
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o dist/db-patrol-linux-arm64 .
 ```
 
 生成的二进制为单文件静态链接，可直接在目标平台运行，无需任何依赖。

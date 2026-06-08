@@ -260,13 +260,13 @@ export DB_PASSWORD=your_password
 
 ```bash
 # Linux ARM64
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o db-patrol-linux-arm64 .
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o dist/db-patrol-linux-arm64 .
 
 # macOS ARM64 (M1/M2)
-GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o db-patrol-darwin-arm64 .
+GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o dist/db-patrol-darwin-arm64 .
 
 # Linux x86_64
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o db-patrol-linux-amd64 .
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/db-patrol-linux-amd64 .
 ```
 
 ---

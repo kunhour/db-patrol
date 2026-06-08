@@ -180,13 +180,13 @@ report:
 go mod tidy
 
 # 编译当前平台
-go build -o db-patrol .
+go build -o dist/db-patrol .
 
 # 交叉编译到 Linux ARM64
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o db-patrol-linux-arm64 .
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o dist/db-patrol-linux-arm64 .
 
 # 交叉编译到 macOS ARM64
-GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o db-patrol-darwin-arm64 .
+GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o dist/db-patrol-darwin-arm64 .
 ```
 
 ## 注意事项
