@@ -1,0 +1,1274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据库巡检报告 - {{.report_title}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .header .meta {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            transition: transform 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+        }
+        .card-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 15px;
+        }
+        .card-success { background: #e8f5e9; color: #2e7d32; }
+        .card-warning { background: #fff3e0; color: #ef6c00; }
+        .card-error { background: #ffebee; color: #c62828; }
+        .card-info { background: #e3f2fd; color: #1565c0; }
+        .card h3 {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .card .value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #333;
+        }
+        .section {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+        .section h2 {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .section h3 {
+            font-size: 1.2em;
+            margin: 25px 0 15px 0;
+            color: #555;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            font-size: 0.95em;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #555;
+            text-transform: uppercase;
+            font-size: 0.85em;
+            letter-spacing: 0.5px;
+        }
+        tr:hover {
+            background: #f8f9fa;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+        .badge-success { background: #e8f5e9; color: #2e7d32; }
+        .badge-warning { background: #fff3e0; color: #ef6c00; }
+        .badge-error { background: #ffebee; color: #c62828; }
+        .badge-info { background: #e3f2fd; color: #1565c0; }
+        .badge-danger { background: #ffebee; color: #c62828; }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+        }
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .info-item .label {
+            color: #666;
+            font-weight: 500;
+        }
+        .info-item .value {
+            color: #333;
+            font-weight: 600;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+        .progress-fill.warning {
+            background: linear-gradient(90deg, #ff9800 0%, #f57c00 100%);
+        }
+        .progress-fill.error {
+            background: linear-gradient(90deg, #f44336 0%, #c62828 100%);
+        }
+        .footer {
+            text-align: center;
+            padding: 30px;
+            color: #999;
+            font-size: 0.9em;
+        }
+        .backup-section {
+            background: #fff8e1;
+            border-left: 4px solid #ffc107;
+        }
+        .health-score {
+            text-align: center;
+            padding: 20px;
+        }
+        .score-circle {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            margin: 0 auto 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5em;
+            font-weight: bold;
+            color: white;
+        }
+        .score-excellent { background: linear-gradient(135deg, #4caf50 0%, #45a049 100%); }
+        .score-good { background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%); }
+        .score-average { background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); }
+        .score-poor { background: linear-gradient(135deg, #f44336 0%, #c62828 100%); }
+        .score-label {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        /* 评分明细表格 */
+        .score-details {
+            margin-top: 30px;
+            text-align: left;
+        }
+        .score-details h3 {
+            color: #333;
+            font-size: 1.1em;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 8px;
+        }
+        .score-details-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .score-details-table th {
+            background: #f5f5f5;
+            padding: 10px;
+            text-align: left;
+            font-weight: 600;
+            color: #555;
+            border-bottom: 2px solid #ddd;
+        }
+        .score-details-table td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .score-details-table tr:hover {
+            background: #fafafa;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+        .status-excellent {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .status-good {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        .status-warning {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+        .status-critical {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .score-label {
+            font-size: 1.2em;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        .findings-section {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+        }
+        .finding-item {
+            padding: 12px 15px;
+            margin: 10px 0;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #ff5722;
+        }
+        .finding-item.finding-warning {
+            border-left-color: #ff9800;
+        }
+        .finding-item.finding-info {
+            border-left-color: #2196f3;
+        }
+        .finding-title {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        .finding-desc {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .metric-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .metric-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .metric-name {
+            font-weight: 600;
+            color: #555;
+        }
+        .metric-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+        }
+        @media print {
+            .card { break-inside: avoid; }
+            .section { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 数据库实例巡检报告</h1>
+            <div class="meta">
+                <p>实例名称: {{.db_name}}</p>
+                <p>数据库类型: {{.db_type}}</p>
+                <p>连接地址: {{.db_host}}:{{.db_port}}</p>
+                <p>生成时间: {{.generated_at}}</p>
+            </div>
+        </div>
+
+        <!-- 概览卡片 -->
+        <div class="summary-cards">
+            <div class="card">
+                <div class="card-icon card-{{if eq .connection_status "正常"}}success{{else}}error{{end}}">
+                    {{if eq .connection_status "正常"}}✓{{else}}✗{{end}}
+                </div>
+                <h3>连接状态</h3>
+                <div class="value">{{.connection_status}}</div>
+            </div>
+            <div class="card">
+                <div class="card-icon card-info">🗄️</div>
+                <h3>数据库数量</h3>
+                <div class="value">{{.database_count}}</div>
+            </div>
+            <div class="card">
+                <div class="card-icon card-info">📊</div>
+                <h3>表总数</h3>
+                <div class="value">{{.table_count}}</div>
+            </div>
+            <div class="card">
+                <div class="card-icon card-info">💾</div>
+                <h3>实例总大小</h3>
+                <div class="value">{{.total_size}}</div>
+            </div>
+        </div>
+
+        <!-- 健康评分 -->
+        {{if .health_score}}
+        <div class="section">
+            <h2>🏥 健康评分</h2>
+            <div class="health-score">
+                <div class="score-circle score-{{.health_score.level}}">
+                    {{.health_score.score}}
+                </div>
+                <div class="score-label">{{.health_score.label}}</div>
+                <p style="color: #666; margin-top: 10px;">{{.health_score.summary}}</p>
+                
+                <!-- 评分明细 -->
+                {{if .health_score.details}}
+                <div class="score-details">
+                    <h3>评分明细</h3>
+                    <table class="score-details-table">
+                        <thead>
+                            <tr>
+                                <th>检查项</th>
+                                <th>得分</th>
+                                <th>状态</th>
+                                <th>详情</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{range .health_score.details}}
+                            <tr>
+                                <td>{{.name}}</td>
+                                <td><strong>{{.score}}/{{.max_score}}</strong></td>
+                                <td>
+                                    {{if eq .status "excellent"}}
+                                    <span class="status-badge status-excellent">优秀</span>
+                                    {{else if eq .status "good"}}
+                                    <span class="status-badge status-good">良好</span>
+                                    {{else if eq .status "warning"}}
+                                    <span class="status-badge status-warning">警告</span>
+                                    {{else if eq .status "critical"}}
+                                    <span class="status-badge status-critical">严重</span>
+                                    {{end}}
+                                </td>
+                                <td>{{.detail}}</td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+                {{end}}
+            </div>
+        </div>
+        {{end}}
+
+        <!-- 关键发现与建议 -->
+        {{if .key_findings}}
+        <div class="section findings-section">
+            <h2>⚠️ 关键发现与建议</h2>
+            {{range .key_findings}}
+            <div class="finding-item finding-{{.level}}">
+                <div class="finding-title">{{.icon}} {{.title}}</div>
+                <div class="finding-desc">{{.description}}</div>
+            </div>
+            {{end}}
+        </div>
+        {{end}}
+
+        <!-- 实例基本信息 -->
+        {{if .instance_info}}
+        <div class="section">
+            <h2>📋 实例基本信息</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="label">产品名称</span>
+                    <span class="value">{{.instance_info.product_name}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">产品版本</span>
+                    <span class="value">{{.instance_info.product_version}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">数据库版本</span>
+                    <span class="value">{{.version}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">启动时间</span>
+                    <span class="value">{{.uptime}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">数据目录</span>
+                    <span class="value">{{.instance_info.data_directory}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">监听地址</span>
+                    <span class="value">{{.instance_info.listen_addresses}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">端口</span>
+                    <span class="value">{{.instance_info.port}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">最大连接数</span>
+                    <span class="value">{{.instance_info.max_connections}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">当前连接数</span>
+                    <span class="value">{{.instance_info.current_connections}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">共享缓冲区</span>
+                    <span class="value">{{.instance_info.shared_buffers}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">数据库当前时间</span>
+                    <span class="value">{{formatDatetime .instance_info.db_time}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">时区</span>
+                    <span class="value">{{.instance_info.timezone}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">表名大小写</span>
+                    <span class="value">{{.instance_info.case_sensitive}}</span>
+                </div>
+            </div>
+        </div>
+        {{end}}
+
+        <!-- 实例配置 (Go侧预计算为 SettingGroups 列表, 每项包含 Title, Icon, Items[{Label, Value}]) -->
+        {{if .setting_groups}}
+        <div class="section">
+            <h2>⚙️ 实例配置</h2>
+            {{range .setting_groups}}
+            <h3>{{.icon}} {{.title}}</h3>
+            <div class="info-grid">
+                {{range .items}}
+                <div class="info-item">
+                    <span class="label">{{.label}}</span>
+                    <span class="value">{{.value}}</span>
+                </div>
+                {{end}}
+            </div>
+            {{end}}
+        </div>
+        {{end}}
+
+        <!-- 数据库列表 -->
+        {{if .databases}}
+        <div class="section">
+            <h2>🗄️ 数据库列表 (共 {{.database_count}} 个)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>序号</th>
+                        <th>数据库名称</th>
+                        <th>大小</th>
+                        <th>Schema数</th>
+                        <th>表数量</th>
+                        <th>视图数量</th>
+                        <th>触发器数量</th>
+                        <th>字符集</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range $idx, $db := .databases.normal}}
+                    <tr>
+                        <td>{{add $idx 1}}</td>
+                        <td>{{$db.name}}</td>
+                        <td>{{$db.size}}</td>
+                        <td>{{$db.schema_count_display}}</td>
+                        <td>{{$db.table_count}}</td>
+                        <td>{{$db.view_count}}</td>
+                        <td>{{$db.trigger_count}}</td>
+                        <td>{{$db.encoding}}</td>
+                    </tr>
+                    {{end}}
+                    <tr style="background-color: #e3f2fd; font-weight: bold;">
+                        <td></td>
+                        <td>汇总</td>
+                        <td>{{.databases_summary.total_size}}</td>
+                        <td>{{.databases_summary.total_schema_count}}</td>
+                        <td>{{.databases_summary.total_table_count}}</td>
+                        <td>{{.databases_summary.total_view_count}}</td>
+                        <td>{{.databases_summary.total_trigger_count}}</td>
+                        <td>-</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {{end}}
+
+        <!-- 疑似备份库 -->
+        {{if .databases.backup}}
+        <div class="section backup-section">
+            <h2>⚠️ 疑似备份库 (共 {{.databases.backup_count}} 个)</h2>
+            <p style="color: #e65100; margin-bottom: 15px;">以下数据库名符合备份库命名规则，建议定期清理以释放空间</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>序号</th>
+                        <th>数据库名称</th>
+                        <th>大小</th>
+                        <th>Schema数</th>
+                        <th>表数量</th>
+                        <th>视图数量</th>
+                        <th>触发器数量</th>
+                        <th>字符集</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range $idx, $db := .databases.backup}}
+                    <tr style="background-color: #fff3e0;">
+                        <td>{{add $idx 1}}</td>
+                        <td>{{$db.name}}</td>
+                        <td>{{$db.size}}</td>
+                        <td>{{$db.schema_count_display}}</td>
+                        <td>{{$db.table_count}}</td>
+                        <td>{{$db.view_count}}</td>
+                        <td>{{$db.trigger_count}}</td>
+                        <td>{{$db.encoding}}</td>
+                    </tr>
+                    {{end}}
+                    <tr style="background-color: #ffecb3; font-weight: bold;">
+                        <td></td>
+                        <td>总计</td>
+                        <td>{{.databases.backup_total_size}}</td>
+                        <td colspan="2">总表数: {{.databases.backup_total_tables}}</td>
+                        <td>{{.databases.backup_total_views}}</td>
+                        <td>{{.databases.backup_total_triggers}}</td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {{end}}
+
+        <!-- 数据表清单 -->
+        {{if .tables_by_database}}
+        <div class="section">
+            <h2>📊 数据表清单</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                <strong>说明</strong>: 
+                {{if isPG .db_type}}
+                行数为估算值(来自 pg_class.reltuples),由 PostgreSQL 统计收集器维护
+                {{else}}
+                行数为估算值(来自 information_schema.tables),由 MySQL 统计信息维护
+                {{end}}<br>
+                <strong>展示规则</strong>: 默认展示 ≥1GB 的大表,每个库最少展示10个表,最多展示50个表
+            </p>
+            
+            {{range .tables_by_database}}
+            <h3>数据库: {{.name}} 
+                <span style="font-size: 0.7em; color: #666; font-weight: normal;">
+                    (展示 {{.stats.display_count}} 个表 / 共 {{.stats.total_count}} 个表, 
+                    其中 {{.stats.large_count}} 个 ≥1GB)
+                </span>
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>排名</th>
+                        <th>模式</th>
+                        <th>表名</th>
+                        <th>大小</th>
+                        <th>字段数</th>
+                        <th>行数(估算)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range $idx, $table := .tables}}
+                    <tr {{if $table.is_backup}}style="background-color: #fff3e0;"{{end}}>
+                        <td>{{add $idx 1}}</td>
+                        <td>{{$table.schema}}</td>
+                        <td>{{$table.table_name}}</td>
+                        <td>{{$table.size}}</td>
+                        <td>{{$table.column_count_display}}</td>
+                        <td>{{formatNumber $table.row_count}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{end}}
+        </div>
+        {{end}}
+
+        <!-- 疑似备份表 -->
+        {{if .backup_tables}}
+        <div class="section backup-section">
+            <h2>⚠️ 疑似备份表 (共 {{.backup_tables_count}} 个)</h2>
+            <p style="color: #e65100; margin-bottom: 15px;">以下表名符合备份表命名规则，建议定期清理以释放空间</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>序号</th>
+                        <th>所属数据库</th>
+                        <th>模式</th>
+                        <th>表名</th>
+                        <th>大小</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range $idx, $table := .backup_tables}}
+                    <tr style="background-color: #fff3e0;">
+                        <td>{{add $idx 1}}</td>
+                        <td>{{$table.database}}</td>
+                        <td>{{$table.schema}}</td>
+                        <td>{{$table.table_name}}</td>
+                        <td>{{$table.size}}</td>
+                    </tr>
+                    {{end}}
+                    <tr style="background-color: #ffecb3; font-weight: bold;">
+                        <td></td>
+                        <td colspan="3">总计</td>
+                        <td>{{.backup_tables_total_size}}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {{end}}
+
+        <!-- 缺少主键或唯一索引的表 -->
+        {{if .tables_without_pk}}
+        <div class="section">
+            <h2>⚠️ 缺少主键或唯一索引的表</h2>
+            <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">
+                以下表缺少主键或唯一索引，建议添加以保证数据完整性和查询性能
+            </p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>数据库</th>
+                        <th>模式</th>
+                        <th>数量</th>
+                        <th>表名</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .tables_without_pk}}
+                    <tr>
+                        <td>{{.name}}</td>
+                        <td>{{.first_schema}}</td>
+                        <td>{{.count}}</td>
+                        <td style="max-width: 600px; word-wrap: break-word;">
+                            {{range $idx, $tn := .table_names}}{{if $idx}}、{{end}}{{$tn}}{{end}}
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{end}}
+
+        <!-- 性能指标 -->
+        {{if .performance}}
+        <div class="section">
+            <h2>⚡ 性能指标</h2>
+            
+            <!-- 缓存命中率 -->
+            {{if .performance.cache_hit_ratio}}
+            <h3>缓存命中率</h3>
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-name">缓存命中率</span>
+                    <span class="metric-value">{{.performance.cache_hit_ratio.ratio}}%</span>
+                </div>
+                <div style="margin-top: 10px;">
+                    <span class="badge badge-{{.performance.cache_hit_ratio.badge_class}}">
+                        {{.performance.cache_hit_ratio.status}}
+                    </span>
+                </div>
+                <p style="color: #666; margin-top: 10px; font-size: 0.9em;">{{.performance.cache_hit_ratio.suggestion}}</p>
+                <div style="margin-top: 10px; font-size: 0.85em; color: #999;">
+                    命中: {{formatNumber .performance.cache_hit_ratio.heap_hit}} | 读取: {{formatNumber .performance.cache_hit_ratio.heap_read}}
+                </div>
+            </div>
+            {{end}}
+
+            <!-- 索引命中率 -->
+            {{if .performance.index_hit_ratio}}
+            <h3>索引命中率</h3>
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-name">索引扫描占比</span>
+                    <span class="metric-value">{{.performance.index_hit_ratio.ratio}}%</span>
+                </div>
+                <div style="margin-top: 10px;">
+                    <span class="badge badge-{{.performance.index_hit_ratio.badge_class}}">
+                        {{.performance.index_hit_ratio.status}}
+                    </span>
+                </div>
+                <p style="color: #666; margin-top: 10px; font-size: 0.9em;">{{.performance.index_hit_ratio.suggestion}}</p>
+                <div style="margin-top: 10px; font-size: 0.85em; color: #999;">
+                    索引扫描: {{formatNumber .performance.index_hit_ratio.idx_scan}} | 顺序扫描: {{formatNumber .performance.index_hit_ratio.seq_scan}}
+                </div>
+            </div>
+            {{end}}
+            
+            {{if .performance.connections}}
+            <h3>连接统计</h3>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="label">当前连接数</span>
+                    <span class="value">{{.performance.connections.current}}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">最大连接数</span>
+                    <span class="value">{{.performance.connections.max}}</span>
+                </div>
+                {{if .performance.connections.has_active}}
+                <div class="info-item">
+                    <span class="label">活跃连接</span>
+                    <span class="value">{{.performance.connections.active}}</span>
+                </div>
+                {{end}}
+                {{if .performance.connections.has_idle}}
+                <div class="info-item">
+                    <span class="label">空闲连接</span>
+                    <span class="value">{{.performance.connections.idle}}</span>
+                </div>
+                {{end}}
+                <div class="info-item">
+                    <span class="label">使用率</span>
+                    <span class="value">{{.performance.connections.usage_percent}}%</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">状态</span>
+                    <span class="value">{{.performance.connections.status}}</span>
+                </div>
+            </div>
+            {{end}}
+
+            {{if .performance.client_connections}}
+            <h3>客户端连接详情 (按IP分组)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>客户端IP</th>
+                        <th>总连接数</th>
+                        <th>活跃</th>
+                        <th>空闲</th>
+                        <th>访问数据库数</th>
+                        <th>访问数据库</th>
+                        <th>用户数</th>
+                        <th>用户</th>
+                        <th>应用数</th>
+                        <th>应用</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .performance.client_connections}}
+                    <tr>
+                        <td>{{.client_ip}}</td>
+                        <td>{{.total_connections}}</td>
+                        <td>{{.active}}</td>
+                        <td>{{.idle}}</td>
+                        <td>{{.database_count}}</td>
+                        <td>{{.databases}}</td>
+                        <td>{{.user_count}}</td>
+                        <td>{{.users}}</td>
+                        <td>{{.application_count}}</td>
+                        <td>{{.applications}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{end}}
+
+            {{if .performance.index_size_analysis}}
+            <h3>⚠️ 索引大小占比分析</h3>
+            <p style="color: #e65100; margin-bottom: 15px;">以下表的索引大小超过数据大小的 30%，建议优化（只显示数据量>=10000行的表）</p>
+            {{range .performance.index_size_analysis}}
+            {{if .tables}}
+            <h4>数据库: {{.name}}</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th>模式</th>
+                        <th>表名</th>
+                        <th>行数</th>
+                        <th>总大小</th>
+                        <th>数据大小</th>
+                        <th>索引数量</th>
+                        <th>索引大小</th>
+                        <th>索引占比</th>
+                        <th>状态</th>
+                        <th>原因分析</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .tables}}
+                    <tr style="{{if eq .attention "严重"}}background-color: #ffebee;{{else}}background-color: #fff3e0;{{end}}">
+                        <td>{{.schemaname}}</td>
+                        <td>{{.table_name}}</td>
+                        <td>{{.row_count}}</td>
+                        <td>{{.total_size}}</td>
+                        <td>{{.table_size}}</td>
+                        <td>{{.index_count}}</td>
+                        <td>{{.index_size}}</td>
+                        <td>{{.index_ratio}}%</td>
+                        <td>
+                            {{if eq .attention "严重"}}
+                            <span class="badge badge-danger">严重</span>
+                            {{else}}
+                            <span class="badge badge-warning">关注</span>
+                            {{end}}
+                        </td>
+                        <td>{{.reason}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{end}}
+            {{end}}
+            {{end}}
+
+            <!-- 长事务检测 -->
+            {{if .performance.long_transactions}}
+            <h3>🕒 长事务检测</h3>
+            <p style="color: #e65100; margin-bottom: 15px;">
+                {{if isPG $.db_type}}
+                以下事务运行超过5分钟,可能阻塞VACUUM并导致表膨胀
+                {{else}}
+                以下事务运行超过5分钟,可能阻塞其他会话或导致锁等待
+                {{end}}
+            </p>
+            <table>
+                <thead>
+                    <tr>
+                        {{if .has_pid}}
+                        <th>PID</th>
+                        <th>数据库</th>
+                        <th>用户</th>
+                        <th>客户端</th>
+                        <th>状态</th>
+                        <th>持续时间</th>
+                        <th>严重程度</th>
+                        <th>等待事件</th>
+                        <th>SQL语句</th>
+                        {{else}}
+                        <th>事务ID</th>
+                        <th>线程ID</th>
+                        <th>状态</th>
+                        <th>锁定表数</th>
+                        <th>锁定行数</th>
+                        <th>持续时间</th>
+                        <th>严重程度</th>
+                        {{end}}
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .performance.long_transactions}}
+                    <tr style="{{if eq .severity "critical"}}background-color: #ffebee;{{else if eq .severity "warning"}}background-color: #fff3e0;{{end}}">
+                        {{if $.performance.has_pid}}
+                        <td>{{.pid}}</td>
+                        <td>{{.database}}</td>
+                        <td>{{.username}}</td>
+                        <td>{{.client_addr_display}}</td>
+                        <td>{{.state}}</td>
+                        <td>{{.duration_display}}</td>
+                        <td>
+                            {{if eq .severity "critical"}}
+                            <span class="badge badge-danger">{{.severity_label}}</span>
+                            {{else if eq .severity "warning"}}
+                            <span class="badge badge-warning">{{.severity_label}}</span>
+                            {{else}}
+                            <span class="badge badge-info">{{.severity_label}}</span>
+                            {{end}}
+                        </td>
+                        <td>{{.wait_event_display}}</td>
+                        <td style="font-size: 0.85em; max-width: 300px; overflow: hidden; text-overflow: ellipsis;">{{.query}}</td>
+                        {{else}}
+                        <td>{{.trx_id}}</td>
+                        <td>{{.thread_id}}</td>
+                        <td>{{.state}}</td>
+                        <td>{{.tables_locked}}</td>
+                        <td>{{.rows_locked}}</td>
+                        <td>{{.duration_display}}</td>
+                        <td>
+                            {{if eq .severity "critical"}}
+                            <span class="badge badge-danger">{{.severity_label}}</span>
+                            {{else if eq .severity "warning"}}
+                            <span class="badge badge-warning">{{.severity_label}}</span>
+                            {{else}}
+                            <span class="badge badge-info">{{.severity_label}}</span>
+                            {{end}}
+                        </td>
+                        {{end}}
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{end}}
+
+            <!-- 锁等待分析 -->
+            {{if .performance.locks}}
+            <h3>🔒 锁等待分析</h3>
+            <p style="color: #e65100; margin-bottom: 15px;">以下会话正在等待锁,可能被其他会话阻塞</p>
+            <table>
+                <thead>
+                    <tr>
+                        {{if .performance.has_blocked_pid}}
+                        <th>被阻塞PID</th>
+                        <th>被阻塞用户</th>
+                        <th>阻塞源PID</th>
+                        <th>阻塞源用户</th>
+                        <th>数据库</th>
+                        <th>等待时间</th>
+                        <th>严重程度</th>
+                        <th>锁类型</th>
+                        <th>被阻塞SQL</th>
+                        <th>阻塞源SQL</th>
+                        {{else}}
+                        <th>等待事务</th>
+                        <th>等待线程</th>
+                        <th>阻塞事务</th>
+                        <th>阻塞线程</th>
+                        <th>等待锁模式</th>
+                        <th>等待锁类型</th>
+                        <th>阻塞锁模式</th>
+                        <th>等待时间</th>
+                        <th>严重程度</th>
+                        {{end}}
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .performance.locks}}
+                    <tr style="{{if eq .severity "critical"}}background-color: #ffebee;{{else if eq .severity "warning"}}background-color: #fff3e0;{{end}}">
+                        {{if $.performance.has_blocked_pid}}
+                        <td>{{.blocked_pid}}</td>
+                        <td>{{.blocked_user}}</td>
+                        <td>{{.blocking_pid}}</td>
+                        <td>{{.blocking_user}}</td>
+                        <td>{{.database}}</td>
+                        <td>{{.wait_display}}</td>
+                        <td>
+                            {{if eq .severity "critical"}}
+                            <span class="badge badge-danger">{{.severity_label}}</span>
+                            {{else if eq .severity "warning"}}
+                            <span class="badge badge-warning">{{.severity_label}}</span>
+                            {{else}}
+                            <span class="badge badge-info">{{.severity_label}}</span>
+                            {{end}}
+                        </td>
+                        <td>{{.locktype}}</td>
+                        <td style="font-size: 0.85em; max-width: 250px; overflow: hidden; text-overflow: ellipsis;">{{.blocked_query}}</td>
+                        <td style="font-size: 0.85em; max-width: 250px; overflow: hidden; text-overflow: ellipsis;">{{.blocking_query}}</td>
+                        {{else}}
+                        <td>{{.waiting_trx_id}}</td>
+                        <td>{{.waiting_thread}}</td>
+                        <td>{{.blocking_trx_id}}</td>
+                        <td>{{.blocking_thread}}</td>
+                        <td>{{.waiting_lock_mode}}</td>
+                        <td>{{.waiting_lock_type}}</td>
+                        <td>{{.blocking_lock_mode}}</td>
+                        <td>{{.wait_display}}</td>
+                        <td>
+                            {{if eq .severity "critical"}}
+                            <span class="badge badge-danger">{{.severity_label}}</span>
+                            {{else if eq .severity "warning"}}
+                            <span class="badge badge-warning">{{.severity_label}}</span>
+                            {{else}}
+                            <span class="badge badge-info">{{.severity_label}}</span>
+                            {{end}}
+                        </td>
+                        {{end}}
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{end}}
+
+            <!-- 死元组分析 -->
+            {{if .performance.dead_tuples}}
+            <h3>📊 死元组与表膨胀分析</h3>
+            <p style="color: #e65100; margin-bottom: 15px;">以下表存在大量死元组,需要执行VACUUM清理</p>
+            {{range .performance.dead_tuples}}
+            {{if .tables}}
+            <h4>数据库: {{.name}}</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th>模式</th>
+                        <th>表名</th>
+                        <th>表大小</th>
+                        <th>活元组</th>
+                        <th>死元组</th>
+                        <th>死元组比例</th>
+                        <th>严重程度</th>
+                        <th>最后VACUUM</th>
+                        <th>最后ANALYZE</th>
+                        <th>建议</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .tables}}
+                    <tr style="{{if eq .severity "critical"}}background-color: #ffebee;{{else if eq .severity "warning"}}background-color: #fff3e0;{{end}}">
+                        <td>{{.schemaname}}</td>
+                        <td>{{.table_name}}</td>
+                        <td>{{.table_size}}</td>
+                        <td>{{formatNumber .live_tuples}}</td>
+                        <td>{{formatNumber .dead_tuples}}</td>
+                        <td>{{.dead_tuple_ratio}}%</td>
+                        <td>
+                            {{if eq .severity "critical"}}
+                            <span class="badge badge-danger">{{.severity_label}}</span>
+                            {{else if eq .severity "warning"}}
+                            <span class="badge badge-warning">{{.severity_label}}</span>
+                            {{else if eq .severity "info"}}
+                            <span class="badge badge-info">{{.severity_label}}</span>
+                            {{else}}
+                            <span class="badge badge-success">{{.severity_label}}</span>
+                            {{end}}
+                        </td>
+                        <td>{{.last_vacuum_display}}</td>
+                        <td>{{.last_analyze_display}}</td>
+                        <td>{{.suggestion}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{end}}
+            {{end}}
+            {{end}}
+
+            <!-- VACUUM状态 -->
+            {{if .performance.vacuum_status}}
+            <h3>🧹 自动VACUUM/ANALYZE执行情况</h3>
+            <p style="color: #e65100; margin-bottom: 15px;">以下表的自动维护任务未正常执行,可能影响查询性能</p>
+            {{range .performance.vacuum_status}}
+            {{if .tables}}
+            <h4>数据库: {{.name}}</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th>模式</th>
+                        <th>表名</th>
+                        <th>活元组</th>
+                        <th>最后VACUUM</th>
+                        <th>最后自动VACUUM</th>
+                        <th>最后ANALYZE</th>
+                        <th>最后自动ANALYZE</th>
+                        <th>状态</th>
+                        <th>建议</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .tables}}
+                    <tr style="{{if eq .severity "critical"}}background-color: #ffebee;{{else if eq .severity "warning"}}background-color: #fff3e0;{{end}}">
+                        <td>{{.schemaname}}</td>
+                        <td>{{.table_name}}</td>
+                        <td>{{formatNumber .live_tuples}}</td>
+                        <td>{{.last_vacuum_display}}</td>
+                        <td>{{.last_autovacuum_display}}</td>
+                        <td>{{.last_analyze_display}}</td>
+                        <td>{{.last_autoanalyze_display}}</td>
+                        <td>
+                            {{if eq .severity "critical"}}
+                            <span class="badge badge-danger">{{.vacuum_status}}</span>
+                            {{else if eq .severity "warning"}}
+                            <span class="badge badge-warning">{{.vacuum_status}}</span>
+                            {{else}}
+                            <span class="badge badge-info">{{.vacuum_status}}</span>
+                            {{end}}
+                        </td>
+                        <td>{{.suggestion}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{end}}
+            {{end}}
+            {{end}}
+
+            <!-- IO统计 -->
+            {{if .performance.io_stats}}
+            <h3>💾 Top IO密集表</h3>
+            <p style="color: #e65100; margin-bottom: 15px;">以下表存在大量磁盘IO,可能成为性能瓶颈</p>
+            {{range .performance.io_stats}}
+            {{if .tables}}
+            <h4>数据库: {{.name}}</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th>模式</th>
+                        <th>表名</th>
+                        <th>表大小</th>
+                        <th>数据页读取</th>
+                        <th>数据页命中</th>
+                        <th>索引页读取</th>
+                        <th>索引页命中</th>
+                        <th>缓存命中率</th>
+                        <th>IO级别</th>
+                        <th>建议</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .tables}}
+                    <tr style="{{if eq .io_level "high"}}background-color: #ffebee;{{else if eq .io_level "medium"}}background-color: #fff3e0;{{end}}">
+                        <td>{{.schemaname}}</td>
+                        <td>{{.table_name}}</td>
+                        <td>{{.table_size}}</td>
+                        <td>{{formatNumber .disk_reads}}</td>
+                        <td>{{formatNumber .buffer_hits}}</td>
+                        <td>{{formatNumber .index_disk_reads}}</td>
+                        <td>{{formatNumber .index_buffer_hits}}</td>
+                        <td>{{.cache_hit_ratio}}%</td>
+                        <td>
+                            {{if eq .io_level "high"}}
+                            <span class="badge badge-danger">{{.io_label}}</span>
+                            {{else if eq .io_level "medium"}}
+                            <span class="badge badge-warning">{{.io_label}}</span>
+                            {{else}}
+                            <span class="badge badge-success">{{.io_label}}</span>
+                            {{end}}
+                        </td>
+                        <td>{{.suggestion}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{end}}
+            {{end}}
+            {{end}}
+
+            <!-- 无效索引 -->
+            {{if .performance.invalid_indexes}}
+            <h3>⚠️ 无效索引检测</h3>
+            <p style="color: #e65100; margin-bottom: 15px;">以下索引从未使用或已失效,建议删除以提升写入性能</p>
+            {{range .performance.invalid_indexes}}
+            {{if .indexes}}
+            <h4>数据库: {{.name}}</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th>模式</th>
+                        <th>表名</th>
+                        <th>索引名</th>
+                        <th>索引大小</th>
+                        <th>扫描次数</th>
+                        <th>问题类型</th>
+                        <th>建议</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .indexes}}
+                    <tr style="{{if eq .issue_type "索引失效"}}background-color: #ffebee;{{else}}background-color: #fff3e0;{{end}}">
+                        <td>{{.schemaname}}</td>
+                        <td>{{.table_name}}</td>
+                        <td>{{.index_name}}</td>
+                        <td>{{.index_size}}</td>
+                        <td>{{.index_scans}}</td>
+                        <td>
+                            {{if eq .issue_type "索引失效"}}
+                            <span class="badge badge-danger">{{.issue_type}}</span>
+                            {{else}}
+                            <span class="badge badge-warning">{{.issue_type}}</span>
+                            {{end}}
+                        </td>
+                        <td>{{.suggestion}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{end}}
+            {{end}}
+            {{end}}
+
+            <!-- 重复索引 -->
+            {{if .performance.duplicate_indexes}}
+            <h3>⚠️ 重复索引检测</h3>
+            <p style="color: #e65100; margin-bottom: 15px;">以下表在相同列上存在多个索引,建议清理冗余索引</p>
+            {{range .performance.duplicate_indexes}}
+            {{if .indexes}}
+            <h4>数据库: {{.name}}</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th>模式</th>
+                        <th>表名</th>
+                        <th>索引名</th>
+                        <th>索引大小</th>
+                        <th>扫描次数</th>
+                        <th>索引定义</th>
+                        <th>建议</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .indexes}}
+                    <tr style="background-color: #fff3e0;">
+                        <td>{{.schemaname}}</td>
+                        <td>{{.table_name}}</td>
+                        <td>{{.index_name}}</td>
+                        <td>{{.index_size}}</td>
+                        <td>{{.index_scans}}</td>
+                        <td style="max-width: 300px; word-wrap: break-word; font-size: 0.85em;">{{.index_definition}}</td>
+                        <td>{{.suggestion}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{end}}
+            {{end}}
+            {{end}}
+        </div>
+        {{end}}
+
+        <div class="footer">
+            <p>由 DB Inspector 自动生成 | {{.generated_at}}</p>
+        </div>
+    </div>
+</body>
+</html>
