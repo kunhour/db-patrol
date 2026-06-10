@@ -274,9 +274,21 @@ func (r *HTMLReporter) Generate(dbConfig models.DBConfig, results map[string]int
 			_, hasBlockedPID = m["blocked_pid"]
 		}
 	}
+	// 死锁显示标志
+	deadlockHasPID := false
+	deadlockHasTrx := false
+	if deadlocks, ok := getSlice(performance, "deadlocks"); ok && len(deadlocks) > 0 {
+		if m, ok := deadlocks[0].(map[string]interface{}); ok {
+			_, deadlockHasPID = m["pid"]
+			_, deadlockHasTrx = m["trx_id"]
+		}
+	}
+
 	if performance != nil {
 		performance["has_pid"] = hasPID
 		performance["has_blocked_pid"] = hasBlockedPID
+		performance["deadlock_has_pid"] = deadlockHasPID
+		performance["deadlock_has_trx"] = deadlockHasTrx
 	}
 
 	// 预计算长事务显示字段
@@ -502,6 +514,7 @@ func convertPerformanceStructs(perf map[string]interface{}) {
 				"user_count": s.UserCount, "users": s.Users,
 				"application_count": s.ApplicationCount, "applications": s.Applications,
 				"active": s.Active, "idle": s.Idle,
+				"idle_in_transaction": s.IdleInTransaction,
 			}
 		case models.LockInfo:
 			return map[string]interface{}{
@@ -527,6 +540,18 @@ func convertPerformanceStructs(perf map[string]interface{}) {
 				"severity_label": s.SeverityLabel, "duration_display": s.DurationDisplay,
 				"query": s.Query, "trx_id": s.TrxID, "thread_id": s.ThreadID,
 				"tables_locked": s.TablesLocked, "rows_locked": s.RowsLocked,
+			}
+		case models.DeadlockInfo:
+			return map[string]interface{}{
+				"pid": s.PID, "database": s.Database, "username": s.Username,
+				"application_name": s.ApplicationName, "client_addr": s.ClientAddr,
+				"state": s.State, "wait_event": s.WaitEvent, "query": s.Query,
+				"duration_seconds": s.DurationSeconds, "trx_id": s.TrxID,
+				"thread_id": s.ThreadID, "state2": s.State2,
+				"tables_locked": s.TablesLocked, "rows_locked": s.RowsLocked,
+				"deadlock_count": s.DeadlockCount, "severity": s.Severity,
+				"severity_label": s.SeverityLabel, "duration_display": s.DurationDisplay,
+				"suggestion": s.Suggestion,
 			}
 		case models.DeadTupleInfo:
 			return map[string]interface{}{
@@ -604,7 +629,7 @@ func convertPerformanceStructs(perf map[string]interface{}) {
 	}
 
 	// 转换 slice 中的 struct
-	sliceKeys := []string{"client_connections", "locks", "long_transactions"}
+	sliceKeys := []string{"client_connections", "locks", "long_transactions", "deadlocks"}
 	for _, key := range sliceKeys {
 		if v, ok := perf[key]; ok {
 			if arr, ok := v.([]interface{}); ok {
@@ -628,6 +653,13 @@ func convertPerformanceStructs(perf map[string]interface{}) {
 				perf[key] = newArr
 			}
 			if arr, ok := v.([]models.LongTransaction); ok {
+				newArr := make([]interface{}, len(arr))
+				for i, item := range arr {
+					newArr[i] = structToMap(item)
+				}
+				perf[key] = newArr
+			}
+			if arr, ok := v.([]models.DeadlockInfo); ok {
 				newArr := make([]interface{}, len(arr))
 				for i, item := range arr {
 					newArr[i] = structToMap(item)

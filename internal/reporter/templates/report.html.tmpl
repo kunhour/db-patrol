@@ -800,6 +800,7 @@
                         <th>总连接数</th>
                         <th>活跃</th>
                         <th>空闲</th>
+                        <th>空闲(事务中)</th>
                         <th>访问数据库数</th>
                         <th>访问数据库</th>
                         <th>用户数</th>
@@ -815,6 +816,7 @@
                         <td>{{.total_connections}}</td>
                         <td>{{.active}}</td>
                         <td>{{.idle}}</td>
+                        <td>{{.idle_in_transaction}}</td>
                         <td>{{.database_count}}</td>
                         <td>{{.databases}}</td>
                         <td>{{.user_count}}</td>
@@ -876,8 +878,8 @@
             {{end}}
 
             <!-- 长事务检测 -->
-            {{if .performance.long_transactions}}
             <h3>🕒 长事务检测</h3>
+            {{if .performance.long_transactions}}
             <p style="color: #e65100; margin-bottom: 15px;">
                 {{if isPG $.db_type}}
                 以下事务运行超过5分钟,可能阻塞VACUUM并导致表膨胀
@@ -888,7 +890,7 @@
             <table>
                 <thead>
                     <tr>
-                        {{if .has_pid}}
+                        {{if .performance.has_pid}}
                         <th>PID</th>
                         <th>数据库</th>
                         <th>用户</th>
@@ -951,11 +953,13 @@
                     {{end}}
                 </tbody>
             </table>
+            {{else}}
+            <p style="color: #2e7d32; margin-bottom: 15px;">✅ 未发现长事务,所有事务运行时间正常</p>
             {{end}}
 
             <!-- 锁等待分析 -->
-            {{if .performance.locks}}
             <h3>🔒 锁等待分析</h3>
+            {{if .performance.locks}}
             <p style="color: #e65100; margin-bottom: 15px;">以下会话正在等待锁,可能被其他会话阻塞</p>
             <table>
                 <thead>
@@ -1029,6 +1033,110 @@
                     {{end}}
                 </tbody>
             </table>
+            {{else}}
+            <p style="color: #2e7d32; margin-bottom: 15px;">✅ 未发现锁等待,无会话被阻塞</p>
+            {{end}}
+
+            <!-- 死锁检测 -->
+            <h3>💀 死锁检测</h3>
+            {{if .performance.deadlocks}}
+            <p style="color: #e65100; margin-bottom: 15px;">
+                {{if isPG $.db_type}}
+                以下数据库存在死锁历史记录或潜在的长时间锁等待
+                {{else}}
+                以下数据库存在InnoDB死锁历史记录或潜在的长时间阻塞事务
+                {{end}}
+            </p>
+            <table>
+                <thead>
+                    <tr>
+                        {{if .performance.deadlock_has_pid}}
+                        <th>PID</th>
+                        <th>数据库</th>
+                        <th>用户</th>
+                        <th>应用</th>
+                        <th>状态</th>
+                        <th>等待事件</th>
+                        <th>持续时间</th>
+                        <th>严重程度</th>
+                        <th>SQL语句</th>
+                        <th>建议</th>
+                        {{else if .performance.deadlock_has_trx}}
+                        <th>事务ID</th>
+                        <th>线程ID</th>
+                        <th>状态</th>
+                        <th>锁定表数</th>
+                        <th>锁定行数</th>
+                        <th>持续时间</th>
+                        <th>严重程度</th>
+                        <th>建议</th>
+                        {{else}}
+                        <th>数据库</th>
+                        <th>死锁次数</th>
+                        <th>严重程度</th>
+                        <th>建议</th>
+                        {{end}}
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .performance.deadlocks}}
+                    <tr style="{{if eq .severity "critical"}}background-color: #ffebee;{{else if eq .severity "warning"}}background-color: #fff3e0;{{end}}">
+                        {{if $.performance.deadlock_has_pid}}
+                        <td>{{.pid}}</td>
+                        <td>{{.database}}</td>
+                        <td>{{.username}}</td>
+                        <td>{{.application_name}}</td>
+                        <td>{{.state}}</td>
+                        <td>{{.wait_event}}</td>
+                        <td>{{.duration_display}}</td>
+                        <td>
+                            {{if eq .severity "critical"}}
+                            <span class="badge badge-danger">{{.severity_label}}</span>
+                            {{else if eq .severity "warning"}}
+                            <span class="badge badge-warning">{{.severity_label}}</span>
+                            {{else}}
+                            <span class="badge badge-info">{{.severity_label}}</span>
+                            {{end}}
+                        </td>
+                        <td style="font-size: 0.85em; max-width: 250px; overflow: hidden; text-overflow: ellipsis;">{{.query}}</td>
+                        <td style="font-size: 0.85em;">{{.suggestion}}</td>
+                        {{else if $.performance.deadlock_has_trx}}
+                        <td>{{.trx_id}}</td>
+                        <td>{{.thread_id}}</td>
+                        <td>{{.state2}}</td>
+                        <td>{{.tables_locked}}</td>
+                        <td>{{.rows_locked}}</td>
+                        <td>{{.duration_display}}</td>
+                        <td>
+                            {{if eq .severity "critical"}}
+                            <span class="badge badge-danger">{{.severity_label}}</span>
+                            {{else if eq .severity "warning"}}
+                            <span class="badge badge-warning">{{.severity_label}}</span>
+                            {{else}}
+                            <span class="badge badge-info">{{.severity_label}}</span>
+                            {{end}}
+                        </td>
+                        <td style="font-size: 0.85em;">{{.suggestion}}</td>
+                        {{else}}
+                        <td>{{.database}}</td>
+                        <td>{{.deadlock_count}}</td>
+                        <td>
+                            {{if eq .severity "critical"}}
+                            <span class="badge badge-danger">{{.severity_label}}</span>
+                            {{else if eq .severity "warning"}}
+                            <span class="badge badge-warning">{{.severity_label}}</span>
+                            {{else}}
+                            <span class="badge badge-info">{{.severity_label}}</span>
+                            {{end}}
+                        </td>
+                        <td style="font-size: 0.85em;">{{.suggestion}}</td>
+                        {{end}}
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{else}}
+            <p style="color: #2e7d32; margin-bottom: 15px;">✅ 未发现死锁记录,数据库事务运行正常</p>
             {{end}}
 
             <!-- 死元组分析 -->

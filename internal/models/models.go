@@ -152,6 +152,7 @@ type ClientConnection struct {
 	Applications      string `json:"applications,omitempty"`
 	Active            int    `json:"active"`
 	Idle              int    `json:"idle"`
+	IdleInTransaction int    `json:"idle_in_transaction"`
 }
 
 // LockInfo 锁信息
@@ -201,6 +202,32 @@ type LongTransaction struct {
 	ThreadID         int       `json:"thread_id,omitempty"`
 	TablesLocked     int       `json:"tables_locked,omitempty"`
 	RowsLocked       int       `json:"rows_locked,omitempty"`
+}
+
+// DeadlockInfo 死锁信息
+type DeadlockInfo struct {
+	// PG fields
+	PID              int     `json:"pid,omitempty"`
+	Database         string  `json:"database,omitempty"`
+	Username         string  `json:"username,omitempty"`
+	ApplicationName  string  `json:"application_name,omitempty"`
+	ClientAddr       string  `json:"client_addr,omitempty"`
+	State            string  `json:"state,omitempty"`
+	WaitEvent        string  `json:"wait_event,omitempty"`
+	Query            string  `json:"query,omitempty"`
+	DurationSeconds  float64 `json:"duration_seconds,omitempty"`
+	// MySQL fields
+	TrxID            string  `json:"trx_id,omitempty"`
+	ThreadID         int     `json:"thread_id,omitempty"`
+	State2           string  `json:"state2,omitempty"`
+	TablesLocked     int     `json:"tables_locked,omitempty"`
+	RowsLocked       int     `json:"rows_locked,omitempty"`
+	// Common
+	DeadlockCount    int64   `json:"deadlock_count,omitempty"`
+	Severity         string  `json:"severity,omitempty"`
+	SeverityLabel    string  `json:"severity_label,omitempty"`
+	DurationDisplay  string  `json:"duration_display,omitempty"`
+	Suggestion       string  `json:"suggestion,omitempty"`
 }
 
 // DeadTupleInfo 死元组信息

@@ -19,7 +19,23 @@ func LoadConfig(path string) (*models.AppConfig, error) {
 		return nil, err
 	}
 
-	// 设置默认值
+	applyDefaults(&cfg)
+	return &cfg, nil
+}
+
+// DefaultConfig 返回默认配置（不依赖配置文件）
+func DefaultConfig() *models.AppConfig {
+	cfg := &models.AppConfig{}
+	// 无配置文件时默认启用所有检查项
+	cfg.Inspection.Checks.BasicInfo = true
+	cfg.Inspection.Checks.Performance = true
+	cfg.Inspection.Checks.Schema = true
+	applyDefaults(cfg)
+	return cfg
+}
+
+// applyDefaults 设置默认值
+func applyDefaults(cfg *models.AppConfig) {
 	if cfg.Inspection.SlowQueryThreshold == 0 {
 		cfg.Inspection.SlowQueryThreshold = 1.0
 	}
@@ -38,8 +54,6 @@ func LoadConfig(path string) (*models.AppConfig, error) {
 	if cfg.Report.OutputDir == "" {
 		cfg.Report.OutputDir = "./reports"
 	}
-
-	return &cfg, nil
 }
 
 // GetDefaultConfigPath 获取默认配置文件路径

@@ -141,9 +141,21 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	}
 
 	// 加载应用配置
-	appConfig, err := config.LoadConfig(cfgFile)
-	if err != nil {
-		return fmt.Errorf("加载配置文件失败: %w", err)
+	var appConfig *models.AppConfig
+	if _, statErr := os.Stat(cfgFile); statErr != nil {
+		// 配置文件不存在
+		if cmd.Flags().Changed("config") {
+			// 用户显式指定了配置文件路径，报错
+			return fmt.Errorf("加载配置文件失败: %w", statErr)
+		}
+		// 使用默认配置（数据库配置稍后会被命令行参数覆盖）
+		appConfig = config.DefaultConfig()
+	} else {
+		var err error
+		appConfig, err = config.LoadConfig(cfgFile)
+		if err != nil {
+			return fmt.Errorf("加载配置文件失败: %w", err)
+		}
 	}
 
 	// 如果通过命令行指定了数据库配置，覆盖配置文件中的

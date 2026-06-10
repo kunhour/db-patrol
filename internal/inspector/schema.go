@@ -78,7 +78,7 @@ func (i *SchemaInspector) checkPGColumnNaming() []models.SchemaIssue {
 	rows, err := i.conn.ExecuteQuery(`
 		SELECT table_name, column_name, data_type
 		FROM information_schema.columns
-		WHERE table_schema = 'public'
+		WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
 	`)
 	if err != nil {
 		return append(issues, models.SchemaIssue{Issue: err.Error()})
@@ -108,7 +108,7 @@ func (i *SchemaInspector) checkPGPrimaryKeys() []models.SchemaIssue {
 		JOIN information_schema.key_column_usage kcu
 			ON tc.constraint_name = kcu.constraint_name
 		WHERE tc.constraint_type = 'PRIMARY KEY'
-			AND tc.table_schema = 'public'
+			AND tc.table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
 	`)
 	if err != nil {
 		return append(issues, models.SchemaIssue{Issue: err.Error()})
@@ -120,7 +120,7 @@ func (i *SchemaInspector) checkPGPrimaryKeys() []models.SchemaIssue {
 	}
 
 	tables, err := i.conn.ExecuteQuery(`
-		SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+		SELECT tablename FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
 	`)
 	if err != nil {
 		return append(issues, models.SchemaIssue{Issue: err.Error()})
@@ -141,7 +141,7 @@ func (i *SchemaInspector) checkPGIndexes() []models.SchemaIssue {
 	rows, err := i.conn.ExecuteQuery(`
 		SELECT schemaname, tablename, indexname
 		FROM pg_indexes
-		WHERE schemaname = 'public'
+		WHERE schemaname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
 	`)
 	if err != nil {
 		return append(issues, models.SchemaIssue{Issue: err.Error()})
@@ -172,7 +172,7 @@ func (i *SchemaInspector) checkPGConstraints() []models.SchemaIssue {
 		JOIN information_schema.constraint_column_usage ccu
 			ON ccu.constraint_name = tc.constraint_name
 		WHERE tc.constraint_type = 'FOREIGN KEY'
-			AND tc.table_schema = 'public'
+			AND tc.table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
 	`)
 	if err != nil {
 		return append(issues, models.SchemaIssue{Issue: err.Error()})
@@ -194,7 +194,7 @@ func (i *SchemaInspector) checkPGDataTypes() []models.SchemaIssue {
 	rows, err := i.conn.ExecuteQuery(`
 		SELECT table_name, column_name, data_type, character_maximum_length
 		FROM information_schema.columns
-		WHERE table_schema = 'public'
+		WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
 	`)
 	if err != nil {
 		return append(issues, models.SchemaIssue{Issue: err.Error()})
@@ -217,7 +217,7 @@ func (i *SchemaInspector) checkPGComments() []models.SchemaIssue {
 		SELECT c.relname as table_name, obj_description(c.oid) as comment
 		FROM pg_class c
 		JOIN pg_namespace n ON n.oid = c.relnamespace
-		WHERE c.relkind = 'r' AND n.nspname = 'public'
+		WHERE c.relkind = 'r' AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
 	`)
 	if err != nil {
 		return append(issues, models.SchemaIssue{Issue: err.Error()})

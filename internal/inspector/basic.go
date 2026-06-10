@@ -177,12 +177,14 @@ func (i *BasicInfoInspector) inspectPGDatabaseAll(dbName string) pgDBResult {
 	// 统计信息
 	statsRows, err := conn.ExecuteQuery(`
 		SELECT
-			(SELECT COUNT(*) FROM pg_tables WHERE schemaname = 'public') as table_count,
-			(SELECT COUNT(*) FROM pg_views WHERE schemaname = 'public') as view_count,
+			(SELECT COUNT(*) FROM pg_tables
+			 WHERE schemaname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')) as table_count,
+			(SELECT COUNT(*) FROM pg_views
+			 WHERE schemaname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')) as view_count,
 			(SELECT COUNT(*) FROM pg_trigger t
 			 JOIN pg_class c ON t.tgrelid = c.oid
 			 JOIN pg_namespace n ON c.relnamespace = n.oid
-			 WHERE n.nspname = 'public') as trigger_count,
+			 WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')) as trigger_count,
 			(SELECT COUNT(*) FROM information_schema.schemata
 			 WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')) as schema_count
 	`)
@@ -206,7 +208,7 @@ func (i *BasicInfoInspector) inspectPGDatabaseAll(dbName string) pgDBResult {
 		FROM pg_tables t
 		JOIN pg_class c ON c.relname = t.tablename
 		JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.schemaname
-		WHERE t.schemaname = 'public'
+		WHERE t.schemaname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
 		ORDER BY pg_total_relation_size(quote_ident(t.schemaname)||'.'||quote_ident(t.tablename)) DESC
 	`)
 	if err == nil {
@@ -254,7 +256,7 @@ func (i *BasicInfoInspector) inspectPGDatabaseAll(dbName string) pgDBResult {
 		FROM pg_tables t
 		JOIN pg_class c ON c.relname = t.tablename
 		JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.schemaname
-		WHERE t.schemaname = 'public'
+		WHERE t.schemaname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
 		ORDER BY c.reltuples DESC NULLS LAST
 	`)
 	if err == nil {
@@ -691,12 +693,12 @@ func (i *BasicInfoInspector) detectBackupDatabases(databases []models.DatabaseIn
 
 	strongPatterns := []*regexp.Regexp{
 		regexp.MustCompile(`(?i)_backup`), regexp.MustCompile(`(?i)_bak`), regexp.MustCompile(`(?i)_copy`),
-		regexp.MustCompile(`(?i)_old$`), regexp.MustCompile(`_\d{8}$`), regexp.MustCompile(`_\d{6}$`),
+		regexp.MustCompile(`(?i)[_\-]old$`), regexp.MustCompile(`_\d{8}$`), regexp.MustCompile(`_\d{6}$`),
 		regexp.MustCompile(`_\d{4}[-_]\d{2}[-_]\d{2}`), regexp.MustCompile(`(?i)[_\-]test\d*$`),
-		regexp.MustCompile(`(?i)^test_`), regexp.MustCompile(`(?i)_temp$`), regexp.MustCompile(`(?i)_dev$`),
+		regexp.MustCompile(`(?i)^test[_\-]`), regexp.MustCompile(`(?i)[_\-]temp$`), regexp.MustCompile(`(?i)[_\-]dev$`),
 	}
 	weakPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?i)_new$`), regexp.MustCompile(`(?i)_prod$`), regexp.MustCompile(`\d{3,}$`), regexp.MustCompile(`\d{4}$`),
+		regexp.MustCompile(`(?i)[_\-]new$`), regexp.MustCompile(`(?i)[_\-]prod$`), regexp.MustCompile(`\d{3,}$`), regexp.MustCompile(`\d{4}$`),
 	}
 	comboPatterns := []*regexp.Regexp{
 		regexp.MustCompile(`(?i)(test|dev|temp|new|prod)$`),

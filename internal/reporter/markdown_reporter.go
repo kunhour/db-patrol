@@ -377,20 +377,20 @@ func (r *MarkdownReporter) Generate(dbConfig models.DBConfig, results map[string
 	// 客户端连接详情
 	if clients, ok := getSlice(performance, "client_connections"); ok && len(clients) > 0 {
 		sb.WriteString("### 客户端连接详情\n\n")
-		sb.WriteString("| 客户端IP | 总连接 | 数据库数 | 用户数 | 应用数 | 活跃 | 空闲 |\n")
-		sb.WriteString("|----------|--------|----------|--------|--------|------|------|\n")
+		sb.WriteString("| 客户端IP | 总连接 | 数据库数 | 用户数 | 应用数 | 活跃 | 空闲 | 空闲(事务中) |\n")
+		sb.WriteString("|----------|--------|----------|--------|--------|------|------|-------------|\n")
 		for _, c := range clients {
 			m := toMapInterface(c)
-			sb.WriteString(fmt.Sprintf("| %v | %v | %v | %v | %v | %v | %v |\n",
+			sb.WriteString(fmt.Sprintf("| %v | %v | %v | %v | %v | %v | %v | %v |\n",
 				m["client_ip"], m["total_connections"], m["database_count"],
-				m["user_count"], m["application_count"], m["active"], m["idle"]))
+				m["user_count"], m["application_count"], m["active"], m["idle"], m["idle_in_transaction"]))
 		}
 		sb.WriteString("\n")
 	}
 
 	// 长事务
+	sb.WriteString("### 🕒 长事务检测\n\n")
 	if longTxns, ok := getSlice(performance, "long_transactions"); ok && len(longTxns) > 0 {
-		sb.WriteString("### 🕒 长事务检测\n\n")
 		sb.WriteString("| 数据库 | 用户 | 客户端 | 状态 | 持续时间 | 查询 |\n")
 		sb.WriteString("|--------|------|--------|------|----------|------|\n")
 		for _, t := range longTxns {
@@ -399,12 +399,14 @@ func (r *MarkdownReporter) Generate(dbConfig models.DBConfig, results map[string
 				m["database"], m["username"], m["client_addr"], m["state"],
 				m["duration_display"], truncateStr(fmt.Sprintf("%v", m["query"]), 80)))
 		}
-		sb.WriteString("\n")
+	} else {
+		sb.WriteString("✅ 未发现长事务,所有事务运行时间正常\n")
 	}
+	sb.WriteString("\n")
 
 	// 锁等待
+	sb.WriteString("### 🔒 锁等待分析\n\n")
 	if locks, ok := getSlice(performance, "locks"); ok && len(locks) > 0 {
-		sb.WriteString("### 🔒 锁等待分析\n\n")
 		sb.WriteString("| 数据库 | 阻塞用户 | 阻塞PID | 等待用户 | 等待PID | 等待时间 | 阻塞模式 | 等待模式 |\n")
 		sb.WriteString("|--------|----------|---------|----------|---------|----------|----------|----------|\n")
 		for _, l := range locks {
@@ -414,8 +416,50 @@ func (r *MarkdownReporter) Generate(dbConfig models.DBConfig, results map[string
 				m["blocked_user"], m["blocked_pid"], m["wait_display"],
 				m["blocking_mode"], m["blocked_mode"]))
 		}
-		sb.WriteString("\n")
+	} else {
+		sb.WriteString("✅ 未发现锁等待,无会话被阻塞\n")
 	}
+	sb.WriteString("\n")
+
+	// 死锁检测
+	sb.WriteString("### 💀 死锁检测\n\n")
+	if deadlocks, ok := getSlice(performance, "deadlocks"); ok && len(deadlocks) > 0 {
+		sb.WriteString("| 数据库 | 死锁次数 | 严重程度 | 建议 |\n")
+		sb.WriteString("|--------|----------|----------|------|\n")
+		for _, d := range deadlocks {
+			m := toMapInterface(d)
+			if m["deadlock_count"] != nil && m["deadlock_count"].(int64) > 0 {
+				sb.WriteString(fmt.Sprintf("| %v | %v | %v | %v |\n",
+					m["database"], m["deadlock_count"], m["severity_label"], m["suggestion"]))
+			}
+		}
+		// 显示潜在死锁(长时间锁等待)
+		hasPotential := false
+		for _, d := range deadlocks {
+			m := toMapInterface(d)
+			if m["pid"] != nil || m["trx_id"] != nil {
+				if !hasPotential {
+					sb.WriteString("\n**潜在死锁(长时间锁等待/长事务):**\n\n")
+					sb.WriteString("| 类型 | 标识 | 数据库 | 持续时间 | 建议 |\n")
+					sb.WriteString("|------|------|--------|----------|------|\n")
+					hasPotential = true
+				}
+				id := ""
+				typ := "PG"
+				if m["pid"] != nil {
+					id = fmt.Sprintf("PID:%v", m["pid"])
+				} else {
+					id = fmt.Sprintf("TrxID:%v", m["trx_id"])
+					typ = "MySQL"
+				}
+				sb.WriteString(fmt.Sprintf("| %s | %s | %v | %v | %v |\n",
+					typ, id, m["database"], m["duration_display"], m["suggestion"]))
+			}
+		}
+	} else {
+		sb.WriteString("✅ 未发现死锁记录,数据库事务运行正常\n")
+	}
+	sb.WriteString("\n")
 
 	// 索引大小分析
 	if groups, ok := performance["index_size_analysis"]; ok {

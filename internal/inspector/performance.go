@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/fatih/color"
+
 	"db-patrol/internal/connection"
 	"db-patrol/internal/models"
 	"db-patrol/internal/utils"
@@ -38,11 +40,10 @@ func (i *PerformanceInspector) inspectPG() (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"connections":          i.getPGConnections(),
 		"client_connections":   i.getPGClientConnections(),
-		"cache_hit_ratio":      i.getPGCacheHitRatio(),
-		"index_hit_ratio":      i.getPGIndexHitRatio(),
 		"activity":             i.getPGActivity(),
 		"locks":                i.getPGLocks(),
 		"long_transactions":    i.getPGLongTransactions(),
+		"deadlocks":            i.getPGDeadlocks(),
 		"slow_queries":         i.getPGSlowQueries(),
 		"table_stats":          i.getPGTableStats(),
 		"index_stats":          i.getPGIndexStats(),
@@ -62,6 +63,7 @@ func (i *PerformanceInspector) inspectPG() (map[string]interface{}, error) {
 	}
 
 	deepResults := i.inspectPGDatabasesParallel(dbNames)
+	var totalHeapRead, totalHeapHit, totalIdxScan, totalSeqScan int64
 	for dbName, data := range deepResults {
 		if len(data.DeadTuples) > 0 {
 			result["dead_tuples"].(map[string]interface{})[dbName] = data.DeadTuples
@@ -81,7 +83,15 @@ func (i *PerformanceInspector) inspectPG() (map[string]interface{}, error) {
 		if len(data.DuplicateIndexes) > 0 {
 			result["duplicate_indexes"].(map[string]interface{})[dbName] = data.DuplicateIndexes
 		}
+		totalHeapRead += data.CacheHitHeapRead
+		totalHeapHit += data.CacheHitHeapHit
+		totalIdxScan += data.IndexHitIdxScan
+		totalSeqScan += data.IndexHitSeqScan
 	}
+
+	// 使用跨库聚合数据计算缓存命中率和索引命中率
+	result["cache_hit_ratio"] = calcPGCacheHitRatio(totalHeapRead, totalHeapHit)
+	result["index_hit_ratio"] = calcPGIndexHitRatio(totalIdxScan, totalSeqScan)
 
 	return result, nil
 }
@@ -93,6 +103,10 @@ type pgDeepResult struct {
 	IndexSizeAnalysis  []models.IndexSizeAnalysis
 	InvalidIndexes     []models.InvalidIndex
 	DuplicateIndexes   []models.DuplicateIndex
+	CacheHitHeapRead   int64
+	CacheHitHeapHit    int64
+	IndexHitIdxScan    int64
+	IndexHitSeqScan    int64
 }
 
 func (i *PerformanceInspector) inspectPGDatabasesParallel(dbNames []string) map[string]pgDeepResult {
@@ -363,6 +377,30 @@ func (i *PerformanceInspector) inspectPGDatabaseDeep(dbName string) pgDeepResult
 		})
 	}
 
+	// 缓存命中率（每个数据库独立统计）
+	rows, err = conn.ExecuteQuery(`
+		SELECT COALESCE(SUM(heap_blks_read), 0) as heap_read, COALESCE(SUM(heap_blks_hit), 0) as heap_hit
+		FROM pg_statio_user_tables
+	`)
+	if err != nil {
+		color.New(color.FgYellow).Printf("  ⚠ 数据库 %s 缓存命中率统计查询失败: %v\n", dbName, err)
+	} else if len(rows) > 0 {
+		result.CacheHitHeapRead = toInt64(rows[0]["heap_read"])
+		result.CacheHitHeapHit = toInt64(rows[0]["heap_hit"])
+	}
+
+	// 索引命中率（每个数据库独立统计）
+	rows, err = conn.ExecuteQuery(`
+		SELECT COALESCE(SUM(idx_scan), 0) as idx_scan, COALESCE(SUM(seq_scan), 0) as seq_scan
+		FROM pg_stat_user_tables
+	`)
+	if err != nil {
+		color.New(color.FgYellow).Printf("  ⚠ 数据库 %s 索引命中率统计查询失败: %v\n", dbName, err)
+	} else if len(rows) > 0 {
+		result.IndexHitIdxScan = toInt64(rows[0]["idx_scan"])
+		result.IndexHitSeqScan = toInt64(rows[0]["seq_scan"])
+	}
+
 	return result
 }
 
@@ -398,18 +436,13 @@ func (i *PerformanceInspector) getPGConnections() models.ConnectionStats {
 	return models.ConnectionStats{Current: current, Max: max, Active: active, Idle: idle, UsagePercent: round(usage), Status: status}
 }
 
-func (i *PerformanceInspector) getPGCacheHitRatio() models.CacheHitRatio {
-	rows, _ := i.conn.ExecuteQuery(`
-		SELECT SUM(heap_blks_read) as heap_read, SUM(heap_blks_hit) as heap_hit,
-			CASE WHEN SUM(heap_blks_read) + SUM(heap_blks_hit) > 0
-				THEN ROUND(SUM(heap_blks_hit)::numeric / (SUM(heap_blks_read) + SUM(heap_blks_hit))::numeric * 100, 2)
-				ELSE 0 END as cache_hit_ratio
-		FROM pg_statio_user_tables
-	`)
-	if len(rows) == 0 {
-		return models.CacheHitRatio{Ratio: 0, Status: "未知"}
+// calcPGCacheHitRatio 根据聚合数据计算缓存命中率
+func calcPGCacheHitRatio(heapRead, heapHit int64) models.CacheHitRatio {
+	total := heapRead + heapHit
+	if total == 0 {
+		return models.CacheHitRatio{Ratio: 0, HeapRead: heapRead, HeapHit: heapHit, Status: "未知", Suggestion: "无用户表IO数据"}
 	}
-	ratio := toFloat64(rows[0]["cache_hit_ratio"])
+	ratio := float64(heapHit) / float64(total) * 100
 	status := "较差"
 	suggestion := "缓存命中率低于95%,建议增加shared_buffers"
 	if ratio >= 99 {
@@ -422,26 +455,21 @@ func (i *PerformanceInspector) getPGCacheHitRatio() models.CacheHitRatio {
 		status = "一般"
 	}
 	return models.CacheHitRatio{
-		Ratio:      ratio,
-		HeapRead:   toInt64(rows[0]["heap_read"]),
-		HeapHit:    toInt64(rows[0]["heap_hit"]),
+		Ratio:      round(ratio),
+		HeapRead:   heapRead,
+		HeapHit:    heapHit,
 		Status:     status,
 		Suggestion: suggestion,
 	}
 }
 
-func (i *PerformanceInspector) getPGIndexHitRatio() models.IndexHitRatio {
-	rows, _ := i.conn.ExecuteQuery(`
-		SELECT SUM(idx_scan) as idx_scan, SUM(seq_scan) as seq_scan,
-			CASE WHEN SUM(idx_scan) + SUM(seq_scan) > 0
-				THEN ROUND(SUM(idx_scan)::numeric / (SUM(idx_scan) + SUM(seq_scan))::numeric * 100, 2)
-				ELSE 0 END as index_hit_ratio
-		FROM pg_stat_user_tables
-	`)
-	if len(rows) == 0 {
-		return models.IndexHitRatio{Ratio: 0, Status: "未知"}
+// calcPGIndexHitRatio 根据聚合数据计算索引命中率
+func calcPGIndexHitRatio(idxScan, seqScan int64) models.IndexHitRatio {
+	total := idxScan + seqScan
+	if total == 0 {
+		return models.IndexHitRatio{Ratio: 0, IdxScan: idxScan, SeqScan: seqScan, Status: "未知", Suggestion: "无用户表扫描数据"}
 	}
-	ratio := toFloat64(rows[0]["index_hit_ratio"])
+	ratio := float64(idxScan) / float64(total) * 100
 	status := "较差"
 	suggestion := "索引命中率低于70%,建议检查是否有缺失索引或查询未使用索引"
 	if ratio >= 90 {
@@ -454,9 +482,9 @@ func (i *PerformanceInspector) getPGIndexHitRatio() models.IndexHitRatio {
 		status = "一般"
 	}
 	return models.IndexHitRatio{
-		Ratio:      ratio,
-		IdxScan:    toInt64(rows[0]["idx_scan"]),
-		SeqScan:    toInt64(rows[0]["seq_scan"]),
+		Ratio:      round(ratio),
+		IdxScan:    idxScan,
+		SeqScan:    seqScan,
 		Status:     status,
 		Suggestion: suggestion,
 	}
@@ -472,23 +500,52 @@ func (i *PerformanceInspector) getPGClientConnections() []models.ClientConnectio
 		GROUP BY datname, usename, client_addr, application_name, state
 		ORDER BY connection_count DESC
 	`)
-	ipStats := map[string]*models.ClientConnection{}
+	type ipDetail struct {
+		conn *models.ClientConnection
+		dbs  map[string]bool
+		users map[string]bool
+		apps  map[string]bool
+	}
+	ipStats := map[string]*ipDetail{}
 	for _, row := range rows {
 		ip := toString(row["client_ip"])
 		if _, ok := ipStats[ip]; !ok {
-			ipStats[ip] = &models.ClientConnection{ClientIP: ip}
+			ipStats[ip] = &ipDetail{
+				conn:  &models.ClientConnection{ClientIP: ip},
+				dbs:   make(map[string]bool),
+				users: make(map[string]bool),
+				apps:  make(map[string]bool),
+			}
 		}
-		stats := ipStats[ip]
-		stats.TotalConnections += toInt(row["connection_count"])
+		detail := ipStats[ip]
+		detail.conn.TotalConnections += toInt(row["connection_count"])
 		if state := toString(row["state"]); state == "active" {
-			stats.Active += toInt(row["connection_count"])
+			detail.conn.Active += toInt(row["connection_count"])
 		} else if state == "idle" {
-			stats.Idle += toInt(row["connection_count"])
+			detail.conn.Idle += toInt(row["connection_count"])
+		} else if state == "idle in transaction" || state == "idle in transaction (aborted)" {
+			detail.conn.IdleInTransaction += toInt(row["connection_count"])
+		}
+		if db := toString(row["database"]); db != "" {
+			detail.dbs[db] = true
+		}
+		if user := toString(row["username"]); user != "" {
+			detail.users[user] = true
+		}
+		if app := toString(row["application_name"]); app != "" {
+			detail.apps[app] = true
 		}
 	}
 	var result []models.ClientConnection
-	for _, v := range ipStats {
-		result = append(result, *v)
+	for _, detail := range ipStats {
+		c := detail.conn
+		c.DatabaseCount = len(detail.dbs)
+		c.Databases = joinKeys(detail.dbs)
+		c.UserCount = len(detail.users)
+		c.Users = joinKeys(detail.users)
+		c.ApplicationCount = len(detail.apps)
+		c.Applications = joinKeys(detail.apps)
+		result = append(result, *c)
 	}
 	return result
 }
@@ -610,6 +667,76 @@ func (i *PerformanceInspector) getPGLongTransactions() []models.LongTransaction 
 	return result
 }
 
+func (i *PerformanceInspector) getPGDeadlocks() []models.DeadlockInfo {
+	var result []models.DeadlockInfo
+
+	// 1. 查询各数据库的累计死锁次数
+	rows, _ := i.conn.ExecuteQuery(`
+		SELECT datname as database, deadlocks
+		FROM pg_stat_database
+		WHERE deadlocks > 0
+		ORDER BY deadlocks DESC
+	`)
+	for _, row := range rows {
+		deadlockCount := toInt64(row["deadlocks"])
+		severity := "info"
+		severityLabel := "关注"
+		suggestion := "历史死锁次数较少,继续保持监控"
+		if deadlockCount > 100 {
+			severity = "critical"
+			severityLabel = "严重"
+			suggestion = "死锁次数较多,建议: 1) 检查事务访问顺序是否一致; 2) 缩短事务持有锁的时间; 3) 降低事务隔离级别"
+		} else if deadlockCount > 10 {
+			severity = "warning"
+			severityLabel = "警告"
+			suggestion = "存在一定数量的死锁,建议检查业务逻辑中事务的加锁顺序"
+		}
+		result = append(result, models.DeadlockInfo{
+			Database:       toString(row["database"]),
+			DeadlockCount:  deadlockCount,
+			Severity:       severity,
+			SeverityLabel:  severityLabel,
+			Suggestion:     suggestion,
+		})
+	}
+
+	// 2. 查询当前可能形成死锁的长时间锁等待(等待超过60秒)
+	rows, _ = i.conn.ExecuteQuery(`
+		SELECT blocked_locks.pid AS pid, blocked_activity.datname AS database,
+			blocked_activity.usename AS username, blocked_activity.application_name,
+			blocked_activity.client_addr, blocked_activity.state,
+			blocked_activity.wait_event,
+			EXTRACT(EPOCH FROM (NOW() - blocked_activity.query_start)) AS duration_seconds,
+			LEFT(blocked_activity.query, 200) AS query
+		FROM pg_catalog.pg_locks blocked_locks
+		JOIN pg_catalog.pg_stat_activity blocked_activity ON blocked_activity.pid = blocked_locks.pid
+		WHERE NOT blocked_locks.granted
+		  AND blocked_activity.state = 'active'
+		  AND NOW() - blocked_activity.query_start > INTERVAL '60 seconds'
+		ORDER BY blocked_activity.query_start ASC
+	`)
+	for _, row := range rows {
+		durationSec := toFloat64(row["duration_seconds"])
+		result = append(result, models.DeadlockInfo{
+			PID:             toInt(row["pid"]),
+			Database:        toString(row["database"]),
+			Username:        toString(row["username"]),
+			ApplicationName: toString(row["application_name"]),
+			ClientAddr:      toString(row["client_addr"]),
+			State:           toString(row["state"]),
+			WaitEvent:       toString(row["wait_event"]),
+			Query:           toString(row["query"]),
+			DurationSeconds: durationSec,
+			Severity:        "warning",
+			SeverityLabel:   "潜在死锁(长时间锁等待)",
+			DurationDisplay: fmt.Sprintf("%.0f秒", durationSec),
+			Suggestion:      "该会话等待锁超过60秒,可能形成死锁链,建议检查是否与阻塞源存在循环等待",
+		})
+	}
+
+	return result
+}
+
 func (i *PerformanceInspector) getPGSlowQueries() []map[string]interface{} {
 	threshold := i.cfg.SlowQueryThreshold
 	if threshold == 0 {
@@ -655,6 +782,7 @@ func (i *PerformanceInspector) inspectMySQL() (map[string]interface{}, error) {
 		"processlist":          i.getMySQLProcesslist(),
 		"long_transactions":    i.getMySQLLongTransactions(),
 		"locks":                i.getMySQLLocks(),
+		"deadlocks":            i.getMySQLDeadlocks(),
 		"index_size_analysis":  i.getMySQLIndexSizeAnalysis(),
 		"invalid_indexes":      i.getMySQLInvalidIndexes(),
 		"duplicate_indexes":    i.getMySQLDuplicateIndexes(),
@@ -909,6 +1037,78 @@ func (i *PerformanceInspector) getMySQLLocks() []models.LockInfo {
 	return result
 }
 
+func (i *PerformanceInspector) getMySQLDeadlocks() []models.DeadlockInfo {
+	var result []models.DeadlockInfo
+
+	// 1. 查询InnoDB死锁次数
+	rows, _ := i.conn.ExecuteQuery("SHOW STATUS LIKE 'Innodb_deadlocks'")
+	var deadlockCount int64
+	if len(rows) > 0 {
+		deadlockCount = toInt64(rows[0]["Value"])
+	}
+
+	// 如果 SHOW STATUS 没有返回,尝试从 information_schema 获取
+	if deadlockCount == 0 {
+		rows, _ = i.conn.ExecuteQuery(`
+			SELECT COUNT FROM information_schema.innodb_metrics
+			WHERE name = 'lock_deadlock_detect'
+		`)
+		// 备用: 尝试从 innodb_metrics 获取
+		rows2, _ := i.conn.ExecuteQuery("SHOW STATUS LIKE 'Innodb_deadlock_detects'")
+		if len(rows2) > 0 {
+			deadlockCount = toInt64(rows2[0]["Value"])
+		}
+	}
+
+	if deadlockCount > 0 {
+		severity := "info"
+		severityLabel := "关注"
+		suggestion := "历史死锁次数较少,继续保持监控"
+		if deadlockCount > 100 {
+			severity = "critical"
+			severityLabel = "严重"
+			suggestion = "死锁次数较多,建议: 1) 确保事务按相同顺序访问表和行; 2) 使用较低的隔离级别; 3) 为查询添加合适的索引减少锁范围"
+		} else if deadlockCount > 10 {
+			severity = "warning"
+			severityLabel = "警告"
+			suggestion = "存在一定数量的死锁,建议检查业务逻辑中事务的加锁顺序"
+		}
+		result = append(result, models.DeadlockInfo{
+			DeadlockCount: deadlockCount,
+			Severity:      severity,
+			SeverityLabel: severityLabel,
+			Suggestion:    suggestion,
+		})
+	}
+
+	// 2. 查询当前长时间运行的事务(可能是死锁幸存者或阻塞源)
+	rows, _ = i.conn.ExecuteQuery(`
+		SELECT trx_id, trx_mysql_thread_id as thread_id, trx_state as state,
+			trx_tables_locked as tables_locked, trx_rows_locked as rows_locked,
+			TIMESTAMPDIFF(SECOND, trx_started, NOW()) as duration_seconds
+		FROM information_schema.innodb_trx
+		WHERE TIMESTAMPDIFF(SECOND, trx_started, NOW()) > 60
+		ORDER BY trx_started ASC
+	`)
+	for _, row := range rows {
+		durationSec := toInt64(row["duration_seconds"])
+		result = append(result, models.DeadlockInfo{
+			TrxID:           toString(row["trx_id"]),
+			ThreadID:        toInt(row["thread_id"]),
+			State2:          toString(row["state"]),
+			TablesLocked:    toInt(row["tables_locked"]),
+			RowsLocked:      toInt(row["rows_locked"]),
+			DurationSeconds: float64(durationSec),
+			Severity:        "warning",
+			SeverityLabel:   "潜在死锁(长时间事务)",
+			DurationDisplay: fmt.Sprintf("%d分%d秒", durationSec/60, durationSec%60),
+			Suggestion:      "该事务运行超过60秒且持有锁,可能成为死锁参与者或阻塞其他事务",
+		})
+	}
+
+	return result
+}
+
 func (i *PerformanceInspector) getMySQLIndexSizeAnalysis() map[string][]models.IndexSizeAnalysis {
 	dbName := i.conn.Config().Database
 	rows, _ := i.conn.ExecuteQuery(`
@@ -1014,4 +1214,12 @@ func (i *PerformanceInspector) getMySQLDuplicateIndexes() map[string][]models.Du
 
 func round(v float64) float64 {
 	return float64(int64(v*100+0.5)) / 100
+}
+
+func joinKeys(m map[string]bool) string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return strings.Join(keys, ", ")
 }

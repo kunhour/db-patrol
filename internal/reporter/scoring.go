@@ -380,6 +380,50 @@ func GenerateKeyFindings(basicInfo, performance, databases, tables map[string]in
 		}
 	}
 
+	// 死锁
+	if deadlocks, ok := getSlice(performance, "deadlocks"); ok && len(deadlocks) > 0 {
+		criticalDeadlocks := 0
+		totalDeadlockCount := int64(0)
+		potentialDeadlocks := 0
+		for _, d := range deadlocks {
+			if m, ok := d.(map[string]interface{}); ok {
+				if count, ok := m["deadlock_count"].(int64); ok {
+					totalDeadlockCount += count
+					if m["severity"] == "critical" {
+						criticalDeadlocks++
+					}
+				}
+				// 潜在死锁(长时间锁等待)
+				if m["pid"] != nil || m["trx_id"] != nil {
+					potentialDeadlocks++
+				}
+			}
+		}
+		if criticalDeadlocks > 0 {
+			findings = append(findings, models.KeyFinding{
+				Level:       "critical",
+				Icon:        "\U0001f534",
+				Title:       "存在严重死锁问题",
+				Description: fmt.Sprintf("数据库累计发生%d次死锁。建议: 1) 确保事务按相同顺序访问表和行; 2) 缩短事务持有锁的时间; 3) 使用较低的隔离级别", totalDeadlockCount),
+			})
+		} else if totalDeadlockCount > 10 {
+			findings = append(findings, models.KeyFinding{
+				Level:       "warning",
+				Icon:        "\U0001f7e1",
+				Title:       "存在死锁记录",
+				Description: fmt.Sprintf("数据库累计发生%d次死锁。建议检查业务逻辑中事务的加锁顺序", totalDeadlockCount),
+			})
+		}
+		if potentialDeadlocks > 0 {
+			findings = append(findings, models.KeyFinding{
+				Level:       "warning",
+				Icon:        "\U0001f7e1",
+				Title:       "存在潜在死锁风险",
+				Description: fmt.Sprintf("发现%d个长时间锁等待(超过60秒),可能形成死锁链。建议排查这些会话是否与阻塞源存在循环等待", potentialDeadlocks),
+			})
+		}
+	}
+
 	// 无主键表
 	if tablesWithoutPK, ok := getMap(basicInfo, "tables_without_pk"); ok {
 		total := 0
