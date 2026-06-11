@@ -12,14 +12,14 @@ inspection:
   # 表大小警告阈值（MB）
   table_size_threshold: 1024
   
+  # 长事务阈值（秒）
+  long_transaction_threshold: 300
+  
   # 检查项开关
   checks:
     basic_info: true
     performance: true
     schema: false
-    table_structure: true
-    index_check: true
-    security: true
 
 # 报告配置
 report:

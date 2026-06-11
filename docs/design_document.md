@@ -370,7 +370,9 @@ func init() {
 2. 设置 `Name()` 和 `Title()` 方法
 3. 实现 `Inspect()` 方法
 4. 在 `inspector.go` 的 `init()` 中注册
-5. 在 `config.yaml` 的 `checks` 下添加开关
+5. 在 `models.go` 的 `Checks` 结构体添加开关字段
+6. 在 `inspector.go` 的 `GetInspectors()` 添加开关判断
+7. 在 `config.yaml` 的 `checks` 下添加开关
 
 #### 3.2.4 基本信息巡检器 (inspector/basic.go)
 
@@ -486,18 +488,18 @@ wg.Wait()
 │                     │ │ Reporter  │ │                │
 ├─────────────────────┤ ├───────────┤ ├────────────────┤
 │ //go:embed 嵌入模板 │ │ 纯文本    │ │ json.Marshal   │
-│ text/template 渲染  │ │ 格式化    │ │ 序列化         │
+│ html/template 渲染  │ │ 格式化    │ │ 序列化         │
 └─────────────────────┘ └───────────┘ └────────────────┘
 
 注: HTML 报告模板通过 //go:embed 嵌入二进制，
-使用 text/template 渲染
+使用 html/template 渲染
 ```
 
 #### 3.3.2 HTML 报告生成器
 
 ##### 技术特点
 
-- 使用 Go `text/template` 模板引擎渲染 HTML
+- 使用 Go `html/template` 模板引擎渲染 HTML
 - `//go:embed` 将模板文件嵌入二进制，无需外部文件
 - 响应式设计，支持移动端查看
 - 现代化 UI 风格，渐变色卡片设计
@@ -515,6 +517,7 @@ wg.Wait()
 | `lower` | 转小写 |
 | `contains` | 字符串包含判断 |
 | `add` | 整数加法 |
+| `safeHTML` | 安全输出 HTML 内容 |
 
 ##### 报告内容结构
 
@@ -655,6 +658,7 @@ inspection:
 report:
   format: html                     # 输出格式: html | markdown | json
   output_dir: ./reports            # 输出目录
+  include_suggestions: true        # 是否包含优化建议
 ```
 
 ### 5.2 配置项说明
@@ -677,6 +681,7 @@ report:
 |-------|------|-------|------|
 | format | string | html | 报告输出格式 |
 | output_dir | string | ./reports | 报告输出目录路径 |
+| include_suggestions | bool | true | 报告中是否包含优化建议 |
 
 ### 5.3 配置加载流程
 
@@ -994,7 +999,7 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o dist/db-patrol.exe .
 - [cobra 文档](https://github.com/spf13/cobra)
 - [lib/pq 文档](https://github.com/lib/pq)
 - [go-sql-driver/mysql 文档](https://github.com/go-sql-driver/mysql)
-- [Go text/template 文档](https://pkg.go.dev/text/template)
+- [Go html/template 文档](https://pkg.go.dev/html/template)
 
 ---
 

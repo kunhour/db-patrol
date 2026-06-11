@@ -25,12 +25,9 @@ type InspectionConfig struct {
 
 // Checks 检查项开关
 type Checks struct {
-	BasicInfo      bool `yaml:"basic_info"`
-	Performance    bool `yaml:"performance"`
-	Schema         bool `yaml:"schema"`
-	TableStructure bool `yaml:"table_structure"`
-	IndexCheck     bool `yaml:"index_check"`
-	Security       bool `yaml:"security"`
+	BasicInfo   bool `yaml:"basic_info"`
+	Performance bool `yaml:"performance"`
+	Schema      bool `yaml:"schema"`
 }
 
 // ReportConfig 报告配置

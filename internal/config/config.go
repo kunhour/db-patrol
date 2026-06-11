@@ -26,10 +26,10 @@ func LoadConfig(path string) (*models.AppConfig, error) {
 // DefaultConfig 返回默认配置（不依赖配置文件）
 func DefaultConfig() *models.AppConfig {
 	cfg := &models.AppConfig{}
-	// 无配置文件时默认启用所有检查项
+	// 无配置文件时默认启用基本检查，设计规范检查默认关闭
 	cfg.Inspection.Checks.BasicInfo = true
 	cfg.Inspection.Checks.Performance = true
-	cfg.Inspection.Checks.Schema = true
+	cfg.Inspection.Checks.Schema = false
 	applyDefaults(cfg)
 	return cfg
 }

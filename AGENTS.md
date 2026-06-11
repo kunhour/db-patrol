@@ -65,7 +65,7 @@ db-patrol/
 - **命名**: PascalCase(导出类型/函数) / snake_case(非导出) / snake_case(文件名)
 - **错误处理**: 查询失败返回默认值/空结果，**不中断巡检流程**
 - **日志**: `fmt.Printf` + `color` 包彩色终端输出
-- **模板**: HTML 模板使用 `//go:embed` 嵌入，`text/template` 渲染
+- **模板**: HTML 模板使用 `//go:embed` 嵌入，`html/template` 渲染
 - **编码**: 全程 UTF-8
 
 ## 扩展指南
@@ -73,14 +73,15 @@ db-patrol/
 | 扩展类型 | 步骤 |
 |---------|------|
 | 新数据库 | 1. `connection/` 新建文件实现 `Connection` 接口 2. `connection.go` 的 `CreateConnection()` 添加分支 |
-| 新巡检项 | 1. `inspector/` 新建文件实现 `Inspector` 接口 2. 设置 `Name()`/`Title()` 3. 实现 `Inspect()` 返回 `map[string]interface{}` 4. `inspector.go` 的 `init()` 中注册 5. `config.yaml` 的 `checks` 添加开关 |
+| 新巡检项 | 1. `inspector/` 新建文件实现 `Inspector` 接口 2. 设置 `Name()`/`Title()` 3. 实现 `Inspect()` 返回 `map[string]interface{}` 4. `inspector.go` 的 `init()` 中注册 5. `models.go` 的 `Checks` 结构体添加开关字段 6. `inspector.go` 的 `GetInspectors()` 添加开关判断 7. `config.yaml` 的 `checks` 添加开关 |
 | 新报告格式 | 1. `reporter/` 新建文件实现 `Reporter` 接口 2. 实现 `Generate(dbConfig, results)` 返回文件路径 3. `reporter.go` 的 `CreateReporter()` 中注册 |
 
 ## 业务规则
 
 ### 备份库检测
-- **强特征**: `_backup/_bak/_copy/_old/_test/_temp/_dev`、日期结尾
-- **弱特征**: 数字结尾 + 存在相似基础名称
+- **强特征**: `_backup/_bak/_copy/_old/_test/_temp/_dev`、日期结尾、以 `test` 开头
+- **弱特征**: `_new/_prod` 后缀或数字结尾 + 存在相似基础名称
+- **组合特征**: `test|dev|temp|new|prod` 后缀 + 存在相似基础名称
 - **白名单**: `emate_dev`
 
 ### 备份表检测
